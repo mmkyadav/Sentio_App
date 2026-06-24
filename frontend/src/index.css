@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  html, body {
+    @apply h-full font-sans antialiased transition-colors duration-300;
+  }
+  
+  /* Paperback theme backgrounds */
+  body {
+    @apply bg-cream-light text-ink-dark;
+  }
+  
+  html.dark body {
+    @apply bg-darkbg-main text-ink-light;
+  }
+
+  /* Elegant Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 9999px;
+  }
+  
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.15);
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+}
+
+/* Glassmorphism sidebar blur effect */
+.sidebar-blur {
+  backdrop-filter: blur(12px);
+  background-color: rgba(250, 248, 245, 0.85);
+}
+
+.dark .sidebar-blur {
+  background-color: rgba(18, 20, 23, 0.85);
+}
+
+/* Lovable style tweet card layout styling helper */
+.tweet-card-border {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.dark .tweet-card-border {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}

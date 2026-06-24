@@ -1,0 +1,27 @@
+# Local database and uploads
+backend/secure_social.db
+backend/secure_social.db-journal
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Environment variables
+.env
+
+# Python caching
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+
+# Node dependencies and build files
+frontend/node_modules/
+frontend/dist/
+frontend/.tmp/
+frontend/tsconfig.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
