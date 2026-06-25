@@ -131,13 +131,40 @@ class SafeConnection:
             self.conn.close()
 
 def get_db_connection():
+    global IS_POSTGRES, pg_pool
     if IS_POSTGRES:
-        conn = pg_pool.getconn()
-        return SafeConnection(conn, True)
-    else:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        return SafeConnection(conn, False)
+        for attempt in range(3):
+            conn = None
+            try:
+                conn = pg_pool.getconn()
+                if conn.closed != 0:
+                    pg_pool.putconn(conn, close=True)
+                    continue
+                # Run a light query to test connection health
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1;")
+                return SafeConnection(conn, True)
+            except Exception as e:
+                print(f"Warning: Stale or failed pool connection detected on attempt {attempt+1} ({e}). Healing...")
+                if conn:
+                    try:
+                        pg_pool.putconn(conn, close=True)
+                    except Exception:
+                        pass
+        
+        # If connections are stale, attempt to recreate the pool
+        try:
+            print("Purging stale connection pool and reconnecting to Supabase PostgreSQL...")
+            pg_pool = pool.ThreadedConnectionPool(1, 20, DATABASE_URL)
+            conn = pg_pool.getconn()
+            return SafeConnection(conn, True)
+        except Exception as e:
+            print(f"Error: Failed to re-establish Supabase database connection pool ({e}). Falling back to SQLite.")
+            IS_POSTGRES = False
+            
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return SafeConnection(conn, False)
 
 # Helper functions for secure password hashing using hashlib (built-in, zero-dependency)
 def hash_password(password: str) -> str:
