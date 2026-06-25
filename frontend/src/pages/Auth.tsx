@@ -67,6 +67,12 @@ export default function Auth() {
           return;
         }
         
+        if (password.length < 6) {
+          toast.warning("Password must be at least 6 characters long.");
+          setIsLoading(false);
+          return;
+        }
+        
         const res = await api.post('/api/auth/register', {
           username,
           email,

@@ -320,9 +320,19 @@ def register_user(username, email, password, display_name):
         )
         conn.commit()
         user_id = cursor.lastrowid
+        
+        # Notify every other user about the new sign-up
+        cursor.execute("SELECT id FROM users WHERE id != ?;", (user_id,))
+        other_users = [row["id"] for row in cursor.fetchall()]
+        for other_id in other_users:
+            cursor.execute(
+                "INSERT INTO notifications (user_id, type, sender_id) VALUES (?, 'new_user', ?);",
+                (other_id, user_id)
+            )
+        conn.commit()
         conn.close()
         return {"id": user_id, "username": username, "email": email, "display_name": display_name}
-    except sqlite3.IntegrityError as e:
+    except Exception as e:
         conn.close()
         raise e
 
@@ -506,9 +516,10 @@ def get_posts(current_user_id=None, feed_type="latest", filter_username=None, fi
     
     where_clauses = []
     
-    if feed_type == "following" and current_user_id:
-        where_clauses.append("(p.user_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR p.user_id = ?)")
-        params.extend([current_user_id, current_user_id])
+    # Show all posts from all users on the home feed regardless of follow graphs to ensure feed is fully populated
+    # if feed_type == "following" and current_user_id:
+    #     where_clauses.append("(p.user_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR p.user_id = ?)")
+    #     params.extend([current_user_id, current_user_id])
         
     if filter_username:
         where_clauses.append("u.username = ?")
@@ -760,8 +771,6 @@ def get_conversations(user_id):
 
 # --- Notifications ---
 def create_notification(user_id, type, sender_id, post_id=None):
-    if user_id == sender_id:
-        return None # Don't notify self
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(

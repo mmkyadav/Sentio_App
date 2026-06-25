@@ -101,6 +101,9 @@ def register(req: RegisterRequest):
     if not username or not email or not password or not display_name:
         raise HTTPException(status_code=400, detail="All fields are required.")
         
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+        
     # Check if username or email is blocked by injection check (pre-filter)
     check_res = moderator.check_local_heuristics(username + " " + display_name)
     if check_res:

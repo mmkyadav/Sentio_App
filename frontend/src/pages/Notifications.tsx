@@ -5,13 +5,14 @@ import api from '../api/axios';
 import Sidebar from '../components/Sidebar';
 import RightPanel from '../components/RightPanel';
 import DarkModeToggle from '../components/DarkModeToggle';
-import { Heart, MessageSquare, UserPlus, AtSign, Bell } from 'lucide-react';
+import { Heart, MessageSquare, UserPlus, AtSign, Bell, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 interface Notification {
   id: number;
   user_id: number;
-  type: 'like' | 'reply' | 'follow' | 'mention';
+  type: 'like' | 'reply' | 'follow' | 'mention' | 'new_user';
   sender_id: number;
   sender_username: string;
   sender_display_name: string;
@@ -26,6 +27,17 @@ export default function Notifications() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const handleFollowNewUser = async (targetId: number, targetUsername: string) => {
+    if (!user) return;
+    try {
+      const res = await api.post(`/api/users/${targetId}/follow?follower_id=${user.id}`);
+      toast.success(res.data.followed ? `Followed @${targetUsername}` : `Unfollowed @${targetUsername}`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to update follow status.");
+    }
+  };
 
   const { data: notifications = [], isLoading, refetch } = useQuery<Notification[]>({
     queryKey: ['notifications', user?.id],
@@ -56,6 +68,8 @@ export default function Notifications() {
         return <UserPlus className="h-4.5 w-4.5 text-green-500" />;
       case 'mention':
         return <AtSign className="h-4.5 w-4.5 text-purple-500" />;
+      case 'new_user':
+        return <UserPlus className="h-4.5 w-4.5 text-orange-500" />;
       default:
         return <Bell className="h-4.5 w-4.5 text-slate-muted" />;
     }
@@ -72,6 +86,21 @@ export default function Notifications() {
         return <span><strong>{name}</strong> followed you</span>;
       case 'mention':
         return <span><strong>{name}</strong> mentioned you in a post</span>;
+      case 'new_user':
+        return (
+          <div className="flex flex-col gap-2">
+            <span>👋 <strong>{notif.sender_display_name || name}</strong> ({name}) joined Sentio! Say hi and connect with them.</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleFollowNewUser(notif.sender_id, notif.sender_username);
+              }}
+              className="w-fit text-xs bg-ink-dark dark:bg-ink-light text-cream-light dark:text-darkbg-main font-bold px-3.5 py-1.5 rounded-full hover:opacity-90 active:scale-95 transition-all mt-1"
+            >
+              Follow
+            </button>
+          </div>
+        );
       default:
         return <span>Interaction from <strong>{name}</strong></span>;
     }

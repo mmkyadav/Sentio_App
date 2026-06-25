@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MessageCircle, Heart, Bookmark, Share2, Repeat2, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../api/axios';
@@ -79,6 +79,16 @@ export default function PostCard({ post: initialPost, onPostDeleted }: PostCardP
     reason: string;
   } | null>(null);
 
+  useEffect(() => {
+    const saved = localStorage.getItem('sentio_bookmarks') || '[]';
+    try {
+      const ids = JSON.parse(saved);
+      setIsBookmarked(ids.includes(post.id));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [post.id]);
+
   const formatTime = (tsStr: string) => {
     try {
       const date = new Date(tsStr.replace(" ", "T"));
@@ -127,8 +137,26 @@ export default function PostCard({ post: initialPost, onPostDeleted }: PostCardP
   };
 
   const handleBookmark = () => {
-    setIsBookmarked(!isBookmarked);
-    toast.success(isBookmarked ? "Bookmark removed" : "Post bookmarked!");
+    const saved = localStorage.getItem('sentio_bookmarks') || '[]';
+    let ids: number[] = [];
+    try {
+      ids = JSON.parse(saved);
+    } catch (e) {
+      ids = [];
+    }
+    
+    const nextBookmarked = !isBookmarked;
+    if (nextBookmarked) {
+      if (!ids.includes(post.id)) {
+        ids.push(post.id);
+      }
+      toast.success("Post bookmarked!");
+    } else {
+      ids = ids.filter(id => id !== post.id);
+      toast.success("Bookmark removed");
+    }
+    localStorage.setItem('sentio_bookmarks', JSON.stringify(ids));
+    setIsBookmarked(nextBookmarked);
   };
 
   const handleShare = () => {
