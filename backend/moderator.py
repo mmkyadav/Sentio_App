@@ -98,12 +98,25 @@ def run_offline_moderation(combined_text: str, is_fallback: bool = False) -> Mod
             reason=f"Blocked by mock moderation: Targeted harassment, vulgarity, or hate speech detected. {simulated_reason}"
         )
         
-    # Check for other categories mock
-    if "kill" in lowercase_text or "suicide" in lowercase_text or "bomb" in lowercase_text:
+    # Check for violence, self-harm, or critical safety threat triggers (expanded for offline safety)
+    violence_triggers = [
+        "kill", "suicide", "bomb", "die today", "want to die", "end my life", 
+        "take my life", "taking my life", "poison", "poisoned", "poisoning", "murdered", 
+        "sleeping pills", "sleeping pill", "overdose", "took 10 pills", "took 20 pills",
+        "swallowed pills", "swallowed 10"
+    ]
+    
+    is_violent = False
+    for trigger in violence_triggers:
+        if trigger in lowercase_text:
+            is_violent = True
+            break
+            
+    if is_violent:
         return ModerationResult(
             is_safe=False,
             violation_type="violence",
-            reason=f"Blocked by mock moderation: Violence/Gore or self-harm threat detected. {simulated_reason}"
+            reason=f"Blocked by offline safety guard: Violence, self-harm, or critical safety threat detected. {simulated_reason}"
         )
         
     if "drugs" in lowercase_text or "buy cocaine" in lowercase_text or "hack" in lowercase_text:
