@@ -40,9 +40,16 @@ if SUPABASE_URL and SUPABASE_KEY and "your_supabase_project_url_here" not in SUP
 app = FastAPI(title="Sentio Social Platform API", version="2.0.0")
 
 # Setup CORS
+allowed_origins = ["*"]
+env_origins = os.environ.get("ALLOWED_ORIGINS")
+if env_origins:
+    allowed_origins = [o.strip() for o in env_origins.split(",") if o.strip()]
+elif os.environ.get("FRONTEND_URL"):
+    allowed_origins = [os.environ.get("FRONTEND_URL").strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
