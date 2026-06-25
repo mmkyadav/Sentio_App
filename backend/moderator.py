@@ -22,7 +22,7 @@ class ModerationResult(BaseModel):
 
 # Compile regexes for rapid local heuristic check
 INJECTION_PATTERNS = [
-    r"ignore\s+(?:the\s+)?system\s+prompt",
+    r"ignore\s+(?:the\s+)?system\s+(?:prompt|rules|instructions)",
     r"ignore\s+(?:previous|all)\s+instructions",
     r"you\s+are\s+now\s+an?\s+(?:unfiltered|unrestricted|jailbroken)",
     r"system\s+override",

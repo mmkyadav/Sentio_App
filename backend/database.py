@@ -2,14 +2,142 @@ import sqlite3
 import os
 import hashlib
 import secrets
+import re
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "secure_social.db")
 
+# Setup PostgreSQL pool if DATABASE_URL is present and configured
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+IS_POSTGRES = False
+pg_pool = None
+
+if DATABASE_URL and "[YOUR-PASSWORD]" not in DATABASE_URL and "your_postgresql_connection_string_here" not in DATABASE_URL:
+    try:
+        import psycopg2
+        from psycopg2 import pool
+        from psycopg2.extras import RealDictCursor
+        
+        # Test connection
+        test_conn = psycopg2.connect(DATABASE_URL)
+        test_conn.close()
+        
+        # Use ThreadedConnectionPool for FastAPI concurrency
+        pg_pool = pool.ThreadedConnectionPool(1, 20, DATABASE_URL)
+        IS_POSTGRES = True
+        print("Connected to PostgreSQL database via Supabase pool.")
+    except Exception as e:
+        print(f"Warning: Failed to connect to PostgreSQL ({e}). Falling back to SQLite.")
+        IS_POSTGRES = False
+else:
+    print("Using SQLite database.")
+
+class SafeCursor:
+    def __init__(self, cursor, is_postgres):
+        self.cursor = cursor
+        self.is_postgres = is_postgres
+        self._lastrowid = None
+
+    def execute(self, query, params=None):
+        if self.is_postgres:
+            trimmed = query.strip().upper()
+            if trimmed.startswith("PRAGMA"):
+                return
+            
+            # Translate CREATE TABLE syntax
+            if "CREATE TABLE" in trimmed:
+                query = query.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+                
+            # Replace SQLite ? with PostgreSQL %s
+            query = query.replace("?", "%s")
+            
+            # Auto-append RETURNING id to INSERT statements to populate lastrowid
+            if trimmed.startswith("INSERT ") and "RETURNING" not in trimmed:
+                query_clean = query.rstrip().rstrip(";")
+                query = query_clean + " RETURNING id;"
+                
+                if params is None:
+                    self.cursor.execute(query)
+                else:
+                    self.cursor.execute(query, params)
+                    
+                row = self.cursor.fetchone()
+                if row:
+                    if isinstance(row, dict):
+                        self._lastrowid = row.get("id")
+                    else:
+                        self._lastrowid = row[0]
+                return
+                
+        if params is None:
+            self.cursor.execute(query)
+        else:
+            self.cursor.execute(query, params)
+
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        if row is None:
+            return None
+        # Convert RealDictCursor row to standard dict if needed
+        if self.is_postgres and not isinstance(row, dict):
+            return dict(row)
+        return row
+
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        if self.is_postgres:
+            return [dict(r) if not isinstance(r, dict) else r for r in rows]
+        return rows
+
+    def fetchmany(self, size):
+        rows = self.cursor.fetchmany(size)
+        if self.is_postgres:
+            return [dict(r) if not isinstance(r, dict) else r for r in rows]
+        return rows
+
+    @property
+    def rowcount(self):
+        return self.cursor.rowcount
+
+    @property
+    def lastrowid(self):
+        if self.is_postgres:
+            return self._lastrowid
+        return self.cursor.lastrowid
+
+class SafeConnection:
+    def __init__(self, conn, is_postgres):
+        self.conn = conn
+        self.is_postgres = is_postgres
+
+    def cursor(self):
+        if self.is_postgres:
+            from psycopg2.extras import RealDictCursor
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = self.conn.cursor()
+        return SafeCursor(cursor, self.is_postgres)
+
+    def commit(self):
+        self.conn.commit()
+
+    def rollback(self):
+        self.conn.rollback()
+
+    def close(self):
+        if self.is_postgres:
+            pg_pool.putconn(self.conn)
+        else:
+            self.conn.close()
+
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if IS_POSTGRES:
+        conn = pg_pool.getconn()
+        return SafeConnection(conn, True)
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return SafeConnection(conn, False)
 
 # Helper functions for secure password hashing using hashlib (built-in, zero-dependency)
 def hash_password(password: str) -> str:
@@ -726,26 +854,38 @@ def check_and_migrate():
         # Check if users table has 'email'
         cursor.execute("SELECT email FROM users LIMIT 1;")
         conn.close()
-    except sqlite3.OperationalError:
+    except Exception:
         # Table doesn't exist or doesn't have 'email', perform migration/recreation!
-        print("Migrating SQLite database schema to support the complete Sentio architecture...")
+        print("Migrating database schema to support the complete Sentio architecture...")
         # Clean up database connection
         conn.close()
         
         # Open a new connection and drop all tables
         conn2 = get_db_connection()
         cursor2 = conn2.cursor()
-        cursor2.execute("PRAGMA foreign_keys = OFF;")
-        cursor2.execute("DROP TABLE IF EXISTS likes;")
-        cursor2.execute("DROP TABLE IF EXISTS comments;")
-        cursor2.execute("DROP TABLE IF EXISTS posts;")
-        cursor2.execute("DROP TABLE IF EXISTS users;")
-        cursor2.execute("DROP TABLE IF EXISTS security_logs;")
-        cursor2.execute("DROP TABLE IF EXISTS follows;")
-        cursor2.execute("DROP TABLE IF EXISTS communities;")
-        cursor2.execute("DROP TABLE IF EXISTS community_members;")
-        cursor2.execute("DROP TABLE IF EXISTS messages;")
-        cursor2.execute("DROP TABLE IF EXISTS notifications;")
+        if not IS_POSTGRES:
+            cursor2.execute("PRAGMA foreign_keys = OFF;")
+            cursor2.execute("DROP TABLE IF EXISTS likes;")
+            cursor2.execute("DROP TABLE IF EXISTS comments;")
+            cursor2.execute("DROP TABLE IF EXISTS posts;")
+            cursor2.execute("DROP TABLE IF EXISTS users;")
+            cursor2.execute("DROP TABLE IF EXISTS security_logs;")
+            cursor2.execute("DROP TABLE IF EXISTS follows;")
+            cursor2.execute("DROP TABLE IF EXISTS communities;")
+            cursor2.execute("DROP TABLE IF EXISTS community_members;")
+            cursor2.execute("DROP TABLE IF EXISTS messages;")
+            cursor2.execute("DROP TABLE IF EXISTS notifications;")
+        else:
+            cursor2.execute("DROP TABLE IF EXISTS likes CASCADE;")
+            cursor2.execute("DROP TABLE IF EXISTS comments CASCADE;")
+            cursor2.execute("DROP TABLE IF EXISTS posts CASCADE;")
+            cursor2.execute("DROP TABLE IF EXISTS users CASCADE;")
+            cursor2.execute("DROP TABLE IF EXISTS security_logs CASCADE;")
+            cursor2.execute("DROP TABLE IF EXISTS follows CASCADE;")
+            cursor2.execute("DROP TABLE IF EXISTS communities CASCADE;")
+            cursor2.execute("DROP TABLE IF EXISTS community_members CASCADE;")
+            cursor2.execute("DROP TABLE IF EXISTS messages CASCADE;")
+            cursor2.execute("DROP TABLE IF EXISTS notifications CASCADE;")
         conn2.commit()
         conn2.close()
         

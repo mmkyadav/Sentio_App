@@ -22,6 +22,21 @@ from backend import database as db
 from backend import extractor
 from backend import moderator
 
+# Setup Supabase Client
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+USE_SUPABASE_STORAGE = False
+supabase_client = None
+
+if SUPABASE_URL and SUPABASE_KEY and "your_supabase_project_url_here" not in SUPABASE_URL and "your_supabase_service_role_key_here" not in SUPABASE_KEY:
+    try:
+        from supabase import create_client
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        USE_SUPABASE_STORAGE = True
+        print("Connected to Supabase Storage.")
+    except Exception as e:
+        print(f"Warning: Failed to initialize Supabase Storage client ({e}). Falling back to local storage.")
+
 app = FastAPI(title="Sentio Social Platform API", version="2.0.0")
 
 # Setup CORS
@@ -178,12 +193,27 @@ async def upload_profile_image(
         
     ext = os.path.splitext(file_name)[1]
     unique_name = f"profile_{user_id}_{image_type}_{uuid.uuid4().hex}{ext}"
-    saved_file_path = os.path.join(UPLOAD_DIR, unique_name)
     
-    with open(saved_file_path, "wb") as buffer:
-        buffer.write(file_bytes)
+    if USE_SUPABASE_STORAGE:
+        try:
+            res = supabase_client.storage.from_("sentio-media").upload(
+                path=unique_name,
+                file=file_bytes,
+                file_options={"content-type": file.content_type}
+            )
+            public_url = supabase_client.storage.from_("sentio-media").get_public_url(unique_name)
+        except Exception as e:
+            print(f"Warning: Supabase upload failed ({e}). Falling back to local storage.")
+            saved_file_path = os.path.join(UPLOAD_DIR, unique_name)
+            with open(saved_file_path, "wb") as buffer:
+                buffer.write(file_bytes)
+            public_url = f"/uploads/{unique_name}"
+    else:
+        saved_file_path = os.path.join(UPLOAD_DIR, unique_name)
+        with open(saved_file_path, "wb") as buffer:
+            buffer.write(file_bytes)
+        public_url = f"/uploads/{unique_name}"
         
-    public_url = f"/uploads/{unique_name}"
     return {"status": "success", "url": public_url}
 
 @app.put("/api/users/profile")
@@ -268,11 +298,7 @@ async def create_post(
     if file and file_bytes:
         ext = os.path.splitext(file_name)[1]
         unique_name = f"{uuid.uuid4()}{ext}"
-        saved_file_path = os.path.join(UPLOAD_DIR, unique_name)
         
-        with open(saved_file_path, "wb") as buffer:
-            buffer.write(file_bytes)
-            
         ext_lower = ext.lower()
         if ext_lower in (".png", ".jpg", ".jpeg", ".webp"):
             file_type = "image"
@@ -281,7 +307,25 @@ async def create_post(
         else:
             file_type = "other"
             
-        saved_file_path = f"/uploads/{unique_name}"
+        if USE_SUPABASE_STORAGE:
+            try:
+                res = supabase_client.storage.from_("sentio-media").upload(
+                    path=unique_name,
+                    file=file_bytes,
+                    file_options={"content-type": file.content_type}
+                )
+                saved_file_path = supabase_client.storage.from_("sentio-media").get_public_url(unique_name)
+            except Exception as e:
+                print(f"Warning: Supabase upload failed ({e}). Falling back to local storage.")
+                local_path = os.path.join(UPLOAD_DIR, unique_name)
+                with open(local_path, "wb") as buffer:
+                    buffer.write(file_bytes)
+                saved_file_path = f"/uploads/{unique_name}"
+        else:
+            local_path = os.path.join(UPLOAD_DIR, unique_name)
+            with open(local_path, "wb") as buffer:
+                buffer.write(file_bytes)
+            saved_file_path = f"/uploads/{unique_name}"
 
     post_id = db.create_post(
         user_id=user_id,
