@@ -37,6 +37,42 @@ if SUPABASE_URL and SUPABASE_KEY and "your_supabase_project_url_here" not in SUP
     except Exception as e:
         print(f"Warning: Failed to initialize Supabase Storage client ({e}). Falling back to local storage.")
 
+# Setup Cloudflare R2 Client
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME", "")
+R2_ENDPOINT_URL = os.environ.get("R2_ENDPOINT_URL", "")
+R2_PUBLIC_URL_PREFIX = os.environ.get("R2_PUBLIC_URL_PREFIX", "")
+USE_R2 = False
+r2_client = None
+
+if R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME and R2_ENDPOINT_URL:
+    try:
+        import boto3
+        from botocore.config import Config
+        r2_client = boto3.client(
+            's3',
+            endpoint_url=R2_ENDPOINT_URL,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            config=Config(signature_version='s3v4')
+        )
+        USE_R2 = True
+        print("Connected to Cloudflare R2 Storage.")
+    except Exception as e:
+        print(f"Warning: Failed to initialize Cloudflare R2 client ({e}).")
+
+def upload_to_r2(file_bytes: bytes, unique_name: str, content_type: str) -> str:
+    global r2_client, R2_BUCKET_NAME, R2_PUBLIC_URL_PREFIX
+    r2_client.put_object(
+        Bucket=R2_BUCKET_NAME,
+        Key=unique_name,
+        Body=file_bytes,
+        ContentType=content_type
+    )
+    prefix = R2_PUBLIC_URL_PREFIX.rstrip("/")
+    return f"{prefix}/{unique_name}"
+
 app = FastAPI(title="Sentio Social Platform API", version="2.0.0")
 
 # Setup CORS
@@ -204,7 +240,17 @@ async def upload_profile_image(
     ext = os.path.splitext(file_name)[1]
     unique_name = f"profile_{user_id}_{image_type}_{uuid.uuid4().hex}{ext}"
     
-    if USE_SUPABASE_STORAGE:
+    uploaded = False
+    public_url = None
+
+    if USE_R2:
+        try:
+            public_url = upload_to_r2(file_bytes, unique_name, file.content_type)
+            uploaded = True
+        except Exception as e:
+            print(f"Warning: Cloudflare R2 upload failed ({e}). Trying Supabase if configured.")
+
+    if not uploaded and USE_SUPABASE_STORAGE:
         try:
             res = supabase_client.storage.from_("sentio-media").upload(
                 path=unique_name,
@@ -212,13 +258,11 @@ async def upload_profile_image(
                 file_options={"content-type": file.content_type}
             )
             public_url = supabase_client.storage.from_("sentio-media").get_public_url(unique_name)
+            uploaded = True
         except Exception as e:
             print(f"Warning: Supabase upload failed ({e}). Falling back to local storage.")
-            saved_file_path = os.path.join(UPLOAD_DIR, unique_name)
-            with open(saved_file_path, "wb") as buffer:
-                buffer.write(file_bytes)
-            public_url = f"/uploads/{unique_name}"
-    else:
+
+    if not uploaded:
         saved_file_path = os.path.join(UPLOAD_DIR, unique_name)
         with open(saved_file_path, "wb") as buffer:
             buffer.write(file_bytes)
@@ -317,7 +361,17 @@ async def create_post(
         else:
             file_type = "other"
             
-        if USE_SUPABASE_STORAGE:
+        uploaded = False
+        saved_file_path = None
+
+        if USE_R2:
+            try:
+                saved_file_path = upload_to_r2(file_bytes, unique_name, file.content_type)
+                uploaded = True
+            except Exception as e:
+                print(f"Warning: Cloudflare R2 upload failed ({e}). Trying Supabase if configured.")
+
+        if not uploaded and USE_SUPABASE_STORAGE:
             try:
                 res = supabase_client.storage.from_("sentio-media").upload(
                     path=unique_name,
@@ -325,13 +379,11 @@ async def create_post(
                     file_options={"content-type": file.content_type}
                 )
                 saved_file_path = supabase_client.storage.from_("sentio-media").get_public_url(unique_name)
+                uploaded = True
             except Exception as e:
                 print(f"Warning: Supabase upload failed ({e}). Falling back to local storage.")
-                local_path = os.path.join(UPLOAD_DIR, unique_name)
-                with open(local_path, "wb") as buffer:
-                    buffer.write(file_bytes)
-                saved_file_path = f"/uploads/{unique_name}"
-        else:
+
+        if not uploaded:
             local_path = os.path.join(UPLOAD_DIR, unique_name)
             with open(local_path, "wb") as buffer:
                 buffer.write(file_bytes)

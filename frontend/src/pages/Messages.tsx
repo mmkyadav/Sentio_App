@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../api/axios';
 import Sidebar from '../components/Sidebar';
+import { getAssetUrl } from '../utils/assetHelper';
+
 import DarkModeToggle from '../components/DarkModeToggle';
 import { Send, Search, UserPlus, ShieldAlert, ArrowLeft, MessageSquare, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@radix-ui/react-dialog';
@@ -217,7 +219,7 @@ export default function Messages() {
                       {/* Avatar */}
                       <div className="h-10 w-10 rounded-full bg-cream-dark dark:bg-darkbg-pill overflow-hidden flex items-center justify-center border border-fine-light flex-shrink-0">
                         {convo.avatar_url ? (
-                          <img src={convo.avatar_url.startsWith('http') ? convo.avatar_url : `http://127.0.0.1:8000${convo.avatar_url}`} alt={convo.username} className="h-full w-full object-cover" />
+                          <img src={getAssetUrl(convo.avatar_url)} alt={convo.username} className="h-full w-full object-cover" />
                         ) : (
                           <span className="font-serif font-bold text-slate-muted uppercase text-sm">{convo.username[0]}</span>
                         )}
@@ -255,7 +257,7 @@ export default function Messages() {
                   {/* Chat Avatar */}
                   <div className="h-9 w-9 rounded-full bg-cream-dark dark:bg-darkbg-pill overflow-hidden flex items-center justify-center border border-fine-light flex-shrink-0">
                     {activeChatUser.avatar_url ? (
-                      <img src={activeChatUser.avatar_url.startsWith('http') ? activeChatUser.avatar_url : `http://127.0.0.1:8000${activeChatUser.avatar_url}`} alt={activeChatUser.username} className="h-full w-full object-cover" />
+                      <img src={getAssetUrl(activeChatUser.avatar_url)} alt={activeChatUser.username} className="h-full w-full object-cover" />
                     ) : (
                       <span className="font-serif font-bold text-slate-muted uppercase text-sm">{activeChatUser.username[0]}</span>
                     )}
@@ -383,7 +385,7 @@ export default function Messages() {
                       >
                         <div className="h-8 w-8 rounded-full bg-cream-dark overflow-hidden flex items-center justify-center border border-fine-light">
                           {targetUser.avatar_url ? (
-                            <img src={targetUser.avatar_url.startsWith('http') ? targetUser.avatar_url : `http://127.0.0.1:8000${targetUser.avatar_url}`} alt={targetUser.username} className="h-full w-full object-cover" />
+                            <img src={getAssetUrl(targetUser.avatar_url)} alt={targetUser.username} className="h-full w-full object-cover" />
                           ) : (
                             <span className="font-serif font-bold text-slate-muted text-xs uppercase">{targetUser.username[0]}</span>
                           )}

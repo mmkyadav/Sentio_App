@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../api/axios';
 import Sidebar from '../components/Sidebar';
+import { getAssetUrl } from '../utils/assetHelper';
 import RightPanel from '../components/RightPanel';
 import PostCard, { Post } from '../components/PostCard';
 import DarkModeToggle from '../components/DarkModeToggle';
@@ -282,7 +283,7 @@ export default function Profile() {
           {/* Profile Banner */}
           <div className="h-44 w-full bg-gradient-to-r from-cream-dark to-slate-200 dark:from-darkbg-card dark:to-darkbg-pill relative overflow-hidden flex-shrink-0">
             {user.cover_url && (
-              <img src={user.cover_url} alt="profile cover" className="h-full w-full object-cover" />
+              <img src={getAssetUrl(user.cover_url)} alt="profile cover" className="h-full w-full object-cover" />
             )}
           </div>
 
@@ -291,7 +292,7 @@ export default function Profile() {
             {/* Overlapping Avatar */}
             <div className="h-24 w-24 rounded-full bg-cream-light dark:bg-darkbg-main border-[3px] border-cream-light dark:border-darkbg-main overflow-hidden flex items-center justify-center -mt-12 shadow-md relative z-10">
               {user.avatar_url ? (
-                <img src={user.avatar_url.startsWith('http') ? user.avatar_url : `http://127.0.0.1:8000${user.avatar_url}`} alt={user.username} className="h-full w-full object-cover" />
+                <img src={getAssetUrl(user.avatar_url)} alt={user.username} className="h-full w-full object-cover" />
               ) : (
                 <span className="font-serif font-bold text-slate-muted text-3xl uppercase">{user.username[0]}</span>
               )}

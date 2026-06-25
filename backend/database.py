@@ -7,35 +7,64 @@ from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "secure_social.db")
 
+# Setup Turso/libSQL database if TURSO_DATABASE_URL is configured
+TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL", "")
+TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
+IS_TURSO = False
+
 # Setup PostgreSQL pool if DATABASE_URL is present and configured
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 IS_POSTGRES = False
 pg_pool = None
 
-if DATABASE_URL and "[YOUR-PASSWORD]" not in DATABASE_URL and "your_postgresql_connection_string_here" not in DATABASE_URL:
+if TURSO_DATABASE_URL and "your_turso_db_url_here" not in TURSO_DATABASE_URL:
     try:
-        import psycopg2
-        from psycopg2 import pool
-        from psycopg2.extras import RealDictCursor
-        
-        # Test connection
-        test_conn = psycopg2.connect(DATABASE_URL)
+        import libsql
+        test_conn = libsql.connect(database=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
         test_conn.close()
-        
-        # Use ThreadedConnectionPool for FastAPI concurrency
-        pg_pool = pool.ThreadedConnectionPool(1, 20, DATABASE_URL)
-        IS_POSTGRES = True
-        print("Connected to PostgreSQL database via Supabase pool.")
+        IS_TURSO = True
+        print("Connected to Turso database.")
     except Exception as e:
-        print(f"Warning: Failed to connect to PostgreSQL ({e}). Falling back to SQLite.")
-        IS_POSTGRES = False
-else:
-    print("Using SQLite database.")
+        print(f"Warning: Failed to connect to Turso ({e}). Falling back to SQLite/Postgres.")
+        IS_TURSO = False
+
+if not IS_TURSO:
+    if DATABASE_URL and "[YOUR-PASSWORD]" not in DATABASE_URL and "your_postgresql_connection_string_here" not in DATABASE_URL:
+        try:
+            import psycopg2
+            from psycopg2 import pool
+            from psycopg2.extras import RealDictCursor
+            
+            # Test connection
+            test_conn = psycopg2.connect(DATABASE_URL)
+            test_conn.close()
+            
+            # Use ThreadedConnectionPool for FastAPI concurrency
+            pg_pool = pool.ThreadedConnectionPool(1, 20, DATABASE_URL)
+            IS_POSTGRES = True
+            print("Connected to PostgreSQL database via Supabase pool.")
+        except Exception as e:
+            print(f"Warning: Failed to connect to PostgreSQL ({e}). Falling back to SQLite.")
+            IS_POSTGRES = False
+
+if not IS_TURSO and not IS_POSTGRES:
+    print("Using local SQLite database.")
+
+class LibsqlRow(dict):
+    def __init__(self, columns, values):
+        super().__init__(zip(columns, values))
+        self._values = tuple(values)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return super().__getitem__(key)
 
 class SafeCursor:
-    def __init__(self, cursor, is_postgres):
+    def __init__(self, cursor, is_postgres, is_turso=False):
         self.cursor = cursor
         self.is_postgres = is_postgres
+        self.is_turso = is_turso
         self._lastrowid = None
 
     def execute(self, query, params=None):
@@ -68,31 +97,50 @@ class SafeCursor:
                     else:
                         self._lastrowid = row[0]
                 return
+        
+        if self.is_turso:
+            trimmed = query.strip().upper()
+            if trimmed.startswith("PRAGMA"):
+                return
                 
         if params is None:
             self.cursor.execute(query)
         else:
             self.cursor.execute(query, params)
 
+    def _to_dict(self, row):
+        if row is None:
+            return None
+        if not self.is_turso:
+            return row
+        # Convert libsql tuple to LibsqlRow (dict with index support)
+        columns = [col[0] for col in self.cursor.description]
+        return LibsqlRow(columns, row)
+
     def fetchone(self):
         row = self.cursor.fetchone()
         if row is None:
             return None
-        # Convert RealDictCursor row to standard dict if needed
         if self.is_postgres and not isinstance(row, dict):
             return dict(row)
+        if self.is_turso:
+            return self._to_dict(row)
         return row
 
     def fetchall(self):
         rows = self.cursor.fetchall()
         if self.is_postgres:
             return [dict(r) if not isinstance(r, dict) else r for r in rows]
+        if self.is_turso:
+            return [self._to_dict(r) for r in rows]
         return rows
 
     def fetchmany(self, size):
         rows = self.cursor.fetchmany(size)
         if self.is_postgres:
             return [dict(r) if not isinstance(r, dict) else r for r in rows]
+        if self.is_turso:
+            return [self._to_dict(r) for r in rows]
         return rows
 
     @property
@@ -103,12 +151,14 @@ class SafeCursor:
     def lastrowid(self):
         if self.is_postgres:
             return self._lastrowid
+        # Both sqlite3 and libsql cursors support lastrowid attribute
         return self.cursor.lastrowid
 
 class SafeConnection:
-    def __init__(self, conn, is_postgres):
+    def __init__(self, conn, is_postgres, is_turso=False):
         self.conn = conn
         self.is_postgres = is_postgres
+        self.is_turso = is_turso
 
     def cursor(self):
         if self.is_postgres:
@@ -116,7 +166,7 @@ class SafeConnection:
             cursor = self.conn.cursor(cursor_factory=RealDictCursor)
         else:
             cursor = self.conn.cursor()
-        return SafeCursor(cursor, self.is_postgres)
+        return SafeCursor(cursor, self.is_postgres, self.is_turso)
 
     def commit(self):
         self.conn.commit()
@@ -131,7 +181,16 @@ class SafeConnection:
             self.conn.close()
 
 def get_db_connection():
-    global IS_POSTGRES, pg_pool
+    global IS_POSTGRES, pg_pool, IS_TURSO, TURSO_DATABASE_URL, TURSO_AUTH_TOKEN
+    if IS_TURSO:
+        try:
+            import libsql
+            conn = libsql.connect(database=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+            return SafeConnection(conn, False, True)
+        except Exception as e:
+            print(f"Warning: Failed to connect to Turso ({e}). Falling back to SQLite/Postgres.")
+            IS_TURSO = False
+            
     if IS_POSTGRES:
         for attempt in range(3):
             conn = None
@@ -143,7 +202,7 @@ def get_db_connection():
                 # Run a light query to test connection health
                 with conn.cursor() as cur:
                     cur.execute("SELECT 1;")
-                return SafeConnection(conn, True)
+                return SafeConnection(conn, True, False)
             except Exception as e:
                 print(f"Warning: Stale or failed pool connection detected on attempt {attempt+1} ({e}). Healing...")
                 if conn:
@@ -157,14 +216,14 @@ def get_db_connection():
             print("Purging stale connection pool and reconnecting to Supabase PostgreSQL...")
             pg_pool = pool.ThreadedConnectionPool(1, 20, DATABASE_URL)
             conn = pg_pool.getconn()
-            return SafeConnection(conn, True)
+            return SafeConnection(conn, True, False)
         except Exception as e:
             print(f"Error: Failed to re-establish Supabase database connection pool ({e}). Falling back to SQLite.")
             IS_POSTGRES = False
             
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return SafeConnection(conn, False)
+    return SafeConnection(conn, False, False)
 
 # Helper functions for secure password hashing using hashlib (built-in, zero-dependency)
 def hash_password(password: str) -> str:
@@ -884,50 +943,77 @@ def get_security_stats():
 
 # Migration check: if the database schema is outdated, drop and migrate
 def check_and_migrate():
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    import sqlite3
     try:
-        # Check if users table has 'email'
+        conn = get_db_connection()
+        cursor = conn.cursor()
+    except Exception as e:
+        print(f"Warning: Failed to connect to database during startup migration check ({e}). Skipping.")
+        return
+
+    try:
+        # Check if users table exists and has email column
         cursor.execute("SELECT email FROM users LIMIT 1;")
         conn.close()
-    except Exception:
-        # Table doesn't exist or doesn't have 'email', perform migration/recreation!
-        print("Migrating database schema to support the complete Sentio architecture...")
-        # Clean up database connection
-        conn.close()
-        
-        # Open a new connection and drop all tables
-        conn2 = get_db_connection()
-        cursor2 = conn2.cursor()
-        if not IS_POSTGRES:
-            cursor2.execute("PRAGMA foreign_keys = OFF;")
-            cursor2.execute("DROP TABLE IF EXISTS likes;")
-            cursor2.execute("DROP TABLE IF EXISTS comments;")
-            cursor2.execute("DROP TABLE IF EXISTS posts;")
-            cursor2.execute("DROP TABLE IF EXISTS users;")
-            cursor2.execute("DROP TABLE IF EXISTS security_logs;")
-            cursor2.execute("DROP TABLE IF EXISTS follows;")
-            cursor2.execute("DROP TABLE IF EXISTS communities;")
-            cursor2.execute("DROP TABLE IF EXISTS community_members;")
-            cursor2.execute("DROP TABLE IF EXISTS messages;")
-            cursor2.execute("DROP TABLE IF EXISTS notifications;")
+        print("Database schema verified.")
+        return
+    except Exception as e:
+        # Check if the failure is due to locking/busy rather than missing schema
+        err_msg = str(e).lower()
+        if "lock" in err_msg or "busy" in err_msg or "timeout" in err_msg or "serialized" in err_msg:
+            print(f"Database is currently locked or busy ({e}). Skipping migration check to prevent data loss.")
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return
+
+        # If it is a real missing table/column error, initialize or migrate
+        print(f"Database schema check failed ({e}). Re-checking database schema...")
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+        try:
+            conn2 = get_db_connection()
+            cursor2 = conn2.cursor()
+            
+            # Check if users table exists
+            cursor2.execute("SELECT 1 FROM users LIMIT 1;")
+            users_exists = True
+        except Exception:
+            users_exists = False
+
+        if not users_exists:
+            # Safe to initialize fresh database since users table doesn't even exist
+            print("Initializing database schema from scratch...")
+            try:
+                init_db()
+            except Exception as init_err:
+                print(f"Error: Failed to initialize database: {init_err}")
+            finally:
+                try:
+                    conn2.close()
+                except Exception:
+                    pass
         else:
-            cursor2.execute("DROP TABLE IF EXISTS likes CASCADE;")
-            cursor2.execute("DROP TABLE IF EXISTS comments CASCADE;")
-            cursor2.execute("DROP TABLE IF EXISTS posts CASCADE;")
-            cursor2.execute("DROP TABLE IF EXISTS users CASCADE;")
-            cursor2.execute("DROP TABLE IF EXISTS security_logs CASCADE;")
-            cursor2.execute("DROP TABLE IF EXISTS follows CASCADE;")
-            cursor2.execute("DROP TABLE IF EXISTS communities CASCADE;")
-            cursor2.execute("DROP TABLE IF EXISTS community_members CASCADE;")
-            cursor2.execute("DROP TABLE IF EXISTS messages CASCADE;")
-            cursor2.execute("DROP TABLE IF EXISTS notifications CASCADE;")
-        conn2.commit()
-        conn2.close()
-        
-        # Re-initialize the database schema
-        init_db()
-        print("Sentio database schema initialized successfully.")
+            # Users table exists but failed the email check -> try to migrate it without dropping data!
+            print("Migrating existing database: adding 'email' column to users...")
+            try:
+                if IS_POSTGRES:
+                    cursor2.execute("ALTER TABLE users ADD COLUMN email VARCHAR(255) UNIQUE;")
+                else:
+                    cursor2.execute("ALTER TABLE users ADD COLUMN email TEXT UNIQUE;")
+                conn2.commit()
+                print("Migration successful: added email column.")
+            except Exception as migrate_err:
+                print(f"Alter table failed or column already exists: {migrate_err}")
+            finally:
+                try:
+                    conn2.close()
+                except Exception:
+                    pass
 
 # Run migration check when imported
 check_and_migrate()

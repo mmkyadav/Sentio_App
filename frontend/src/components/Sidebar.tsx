@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { Home, Compass, Bell, Bookmark, User, PenSquare, LogOut } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { getAssetUrl } from '../utils/assetHelper';
 
 interface SidebarProps {
   onOpenNewPostModal: () => void;
@@ -70,7 +71,7 @@ export default function Sidebar({ onOpenNewPostModal }: SidebarProps) {
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/profile/${user.username}`)}>
             <div className="h-10 w-10 rounded-full bg-cream-dark dark:bg-darkbg-pill border border-fine-light dark:border-fine-dark overflow-hidden flex items-center justify-center">
               {user.avatar_url ? (
-                <img src={user.avatar_url.startsWith('http') ? user.avatar_url : `http://127.0.0.1:8000${user.avatar_url}`} alt={user.username} className="h-full w-full object-cover" />
+                <img src={getAssetUrl(user.avatar_url)} alt={user.username} className="h-full w-full object-cover" />
               ) : (
                 <span className="font-serif font-semibold text-slate-muted uppercase">{user.username[0]}</span>
               )}

@@ -1,9 +1,38 @@
 import { useState, useEffect } from 'react';
-import { MessageCircle, Heart, Bookmark, Share2, Repeat2, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { MessageCircle, Heart, Bookmark, Share2, Repeat2, CheckCircle2, ShieldAlert, Download } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../api/axios';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getAssetUrl } from '../utils/assetHelper';
+import PDFSlideViewer from './PDFSlideViewer';
+
+const TextViewer = ({ fileUrl }: { fileUrl: string }) => {
+  const [text, setText] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    fetch(fileUrl)
+      .then(res => res.text())
+      .then(data => {
+        setText(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Error loading txt:", err);
+        setText("Failed to load text content.");
+        setLoading(false);
+      });
+  }, [fileUrl]);
+
+  if (loading) return <div className="p-4 text-xs text-slate-muted dark:text-slate-mutedDark text-left">Loading text document...</div>;
+
+  return (
+    <pre className="p-4 bg-cream-dark/10 dark:bg-darkbg-pill/10 text-xs font-mono text-ink-dark dark:text-ink-light whitespace-pre-wrap max-h-60 overflow-y-auto text-left leading-relaxed">
+      {text}
+    </pre>
+  );
+};
 
 export interface Post {
   id: number;
@@ -226,8 +255,9 @@ export default function PostCard({ post: initialPost, onPostDeleted }: PostCardP
     }
   };
 
-  const fileUrl = post.file_path ? `http://127.0.0.1:8000${post.file_path}` : null;
+  const fileUrl = post.file_path ? getAssetUrl(post.file_path) : null;
   const filename = post.file_path ? post.file_path.split('/').pop() : '';
+  const extension = (post.file_path ? post.file_path.split('.').pop()?.toLowerCase() : '') || '';
 
   return (
     <div className="w-full flex flex-col p-5 tweet-card-border bg-cream-light dark:bg-darkbg-main hover:bg-cream-dark/10 dark:hover:bg-darkbg-pill/5 transition-colors">
@@ -235,7 +265,7 @@ export default function PostCard({ post: initialPost, onPostDeleted }: PostCardP
         {/* Avatar */}
         <div className="h-10 w-10 rounded-full bg-cream-dark dark:bg-darkbg-pill border border-fine-light dark:border-fine-dark overflow-hidden flex items-center justify-center flex-shrink-0">
           {post.avatar_url ? (
-            <img src={post.avatar_url.startsWith('http') ? post.avatar_url : `http://127.0.0.1:8000${post.avatar_url}`} alt={post.username} className="h-full w-full object-cover" />
+            <img src={getAssetUrl(post.avatar_url)} alt={post.username} className="h-full w-full object-cover" />
           ) : (
             <span className="font-serif font-semibold text-slate-muted uppercase text-sm">{post.username[0]}</span>
           )}
@@ -280,16 +310,26 @@ export default function PostCard({ post: initialPost, onPostDeleted }: PostCardP
                 />
               )}
               {post.file_type === 'document' && (
-                <div
-                  onClick={() => window.open(fileUrl, '_blank')}
-                  className="p-4 bg-cream-dark/20 dark:bg-darkbg-pill/20 hover:bg-cream-dark/40 dark:hover:bg-darkbg-pill/40 transition-colors flex items-center gap-3 cursor-pointer"
-                >
-                  <Bookmark className="h-6 w-6 text-accent-warm" />
-                  <div className="flex flex-col items-start">
-                    <span className="font-semibold text-sm text-ink-dark dark:text-ink-light truncate max-w-xs">{filename}</span>
-                    <span className="text-xs text-slate-muted dark:text-slate-mutedDark">Open attached document</span>
-                  </div>
-                </div>
+                <>
+                  {extension === 'pdf' ? (
+                    <PDFSlideViewer fileUrl={fileUrl} filename={filename} />
+                  ) : extension === 'txt' ? (
+                    <TextViewer fileUrl={fileUrl} />
+                  ) : (
+                    <a
+                      href={fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-4 bg-cream-dark/20 dark:bg-darkbg-pill/20 hover:bg-cream-dark/40 dark:hover:bg-darkbg-pill/40 transition-colors flex items-center gap-3 cursor-pointer"
+                    >
+                      <Bookmark className="h-6 w-6 text-accent-warm" />
+                      <div className="flex flex-col items-start">
+                        <span className="font-semibold text-sm text-ink-dark dark:text-ink-light truncate max-w-xs">{filename}</span>
+                        <span className="text-xs text-slate-muted dark:text-slate-mutedDark">Download document ({extension.toUpperCase()})</span>
+                      </div>
+                    </a>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -408,7 +448,7 @@ export default function PostCard({ post: initialPost, onPostDeleted }: PostCardP
                         {/* Reply Avatar */}
                         <div className="h-8 w-8 rounded-full bg-cream-dark dark:bg-darkbg-pill overflow-hidden flex items-center justify-center border border-fine-light dark:border-fine-dark flex-shrink-0">
                           {comm.avatar_url ? (
-                            <img src={comm.avatar_url.startsWith('http') ? comm.avatar_url : `http://127.0.0.1:8000${comm.avatar_url}`} alt={comm.username} className="h-full w-full object-cover" />
+                            <img src={getAssetUrl(comm.avatar_url)} alt={comm.username} className="h-full w-full object-cover" />
                           ) : (
                             <span className="font-serif font-semibold text-slate-muted uppercase text-xs">{comm.username[0]}</span>
                           )}

@@ -3,6 +3,7 @@ import { Image as ImageIcon, Paperclip, X, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../api/axios';
 import { toast } from 'sonner';
+import { getAssetUrl } from '../utils/assetHelper';
 
 interface PostComposerProps {
   onPostCreated: () => void;
@@ -179,7 +180,7 @@ export default function PostComposer({
         {/* Avatar */}
         <div className="h-11 w-11 rounded-full bg-cream-dark dark:bg-darkbg-pill border border-fine-light dark:border-fine-dark overflow-hidden flex items-center justify-center flex-shrink-0 mt-1">
           {user?.avatar_url ? (
-            <img src={user.avatar_url.startsWith('http') ? user.avatar_url : `http://127.0.0.1:8000${user.avatar_url}`} alt={user.username} className="h-full w-full object-cover" />
+            <img src={getAssetUrl(user.avatar_url)} alt={user.username} className="h-full w-full object-cover" />
           ) : (
             <span className="font-serif font-semibold text-slate-muted uppercase text-sm">{user?.username[0] || 'Y'}</span>
           )}

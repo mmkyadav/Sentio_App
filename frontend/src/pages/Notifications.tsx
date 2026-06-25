@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../api/axios';
 import Sidebar from '../components/Sidebar';
+import { getAssetUrl } from '../utils/assetHelper';
 import RightPanel from '../components/RightPanel';
 import DarkModeToggle from '../components/DarkModeToggle';
 import { Heart, MessageSquare, UserPlus, AtSign, Bell, User } from 'lucide-react';
@@ -159,7 +160,7 @@ export default function Notifications() {
                       }}
                     >
                       {notif.sender_avatar_url ? (
-                        <img src={notif.sender_avatar_url.startsWith('http') ? notif.sender_avatar_url : `http://127.0.0.1:8000${notif.sender_avatar_url}`} alt={notif.sender_username} className="h-full w-full object-cover" />
+                        <img src={getAssetUrl(notif.sender_avatar_url)} alt={notif.sender_username} className="h-full w-full object-cover" />
                       ) : (
                         <span className="font-serif font-bold text-slate-muted text-xs uppercase">{notif.sender_username[0]}</span>
                       )}

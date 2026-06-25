@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../api/axios';
 import Sidebar from '../components/Sidebar';
+import { getAssetUrl } from '../utils/assetHelper';
 import RightPanel from '../components/RightPanel';
 import PostCard, { Post } from '../components/PostCard';
 import DarkModeToggle from '../components/DarkModeToggle';
@@ -255,7 +256,7 @@ export default function Explore() {
                         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/profile/${u.username}`)}>
                           <div className="h-10 w-10 rounded-full bg-cream-dark dark:bg-darkbg-pill overflow-hidden flex items-center justify-center border border-fine-light">
                             {u.avatar_url ? (
-                              <img src={u.avatar_url.startsWith('http') ? u.avatar_url : `http://127.0.0.1:8000${u.avatar_url}`} alt={u.username} className="h-full w-full object-cover" />
+                              <img src={getAssetUrl(u.avatar_url)} alt={u.username} className="h-full w-full object-cover" />
                             ) : (
                               <span className="font-serif font-bold text-slate-muted uppercase">{u.username[0]}</span>
                             )}

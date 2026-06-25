@@ -3,6 +3,7 @@ import { Search } from 'lucide-react';
 import api from '../api/axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigate } from 'react-router-dom';
+import { getAssetUrl } from '../utils/assetHelper';
 
 interface Trend {
   id: number;
@@ -162,7 +163,7 @@ export default function RightPanel() {
               >
                 <div className="h-9 w-9 rounded-full bg-cream-dark dark:bg-darkbg-pill overflow-hidden flex items-center justify-center border border-fine-light dark:border-fine-dark">
                   {recUser.avatar_url ? (
-                    <img src={recUser.avatar_url.startsWith('http') ? recUser.avatar_url : `http://127.0.0.1:8000${recUser.avatar_url}`} alt={recUser.username} className="h-full w-full object-cover" />
+                    <img src={getAssetUrl(recUser.avatar_url)} alt={recUser.username} className="h-full w-full object-cover" />
                   ) : (
                     <span className="font-serif font-semibold text-slate-muted uppercase text-sm">{recUser.username[0]}</span>
                   )}
